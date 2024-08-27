@@ -419,6 +419,11 @@ def lambda_handler(event, context):
                     download_s3(CurrentStep[1], session, CurrentStep[2])
                 else:
                     download_s3(CurrentStep[1], session)
+            elif CurrentStep[0].casefold() == "download_s3_chunk":
+                if len(CurrentStep) > 2:
+                    download_s3_chunk(CurrentStep[1], session, CurrentStep[2])
+                else:
+                    download_s3_chunk(CurrentStep[1], session)
             elif CurrentStep[0].casefold() == "download_http":
                 if len(CurrentStep) > 2:
                     download_http(CurrentStep[1], session, CurrentStep[2])
