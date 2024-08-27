@@ -150,6 +150,79 @@ def download_s3(s3_url, session, dest="C:\\wks_automation\\"):
 
         logger.info("Return code %s.", result.status_code)
 
+def download_s3_chunk(s3_url, session, dest="C:\\wks_automation\\", chunk_size=1024 * 1024 * 50):
+    """Downloads file from S3 to WorkSpace using chunked download
+
+    :param s3_url: string
+    :param session: active pywinrm session
+    :param dest (optional): folder to download to, slashes in path should be doubled '\\', defaults to c:\\wks_automation\\ folder
+    :param chunk_size: size of each chunk in bytes, defaults to 50MB
+    """
+
+    # Strip off s3://
+    s3_url = s3_url.replace("s3://", "")
+
+    # Get bucket
+    S3Bucket = s3_url.split("/", 1)[0]
+
+    # Get full path to object
+    S3FullPath = s3_url.split("/", 1)[1]
+
+    # Get just the file or object name
+    S3File = s3_url.rsplit("/", 1)[-1]
+
+    # Ensure the path ends in a trailing slash
+    if dest[-1:] != "\\":
+        dest = dest + "\\"
+
+    destination = dest + S3File
+
+    # Generate presigned URL
+    S3SignedUrl = create_presigned_url(S3Bucket, S3FullPath)
+
+    if S3SignedUrl:
+        # Create folder to download to
+        result = session.run_ps(
+            "New-Item -Path " + dest + ' -ItemType "directory" -force'
+        )
+
+        if result.status_code != 0:
+            logger.error(f"Error creating directory: {result.std_err}")
+            return
+        
+        # Download file in chunks using Invoke-WebRequest
+        ps_script = f'''
+        $url = "{S3SignedUrl}"
+        $outputFile = "{destination}"
+        $chunkSize = {chunk_size}
+
+        $webClient = New-Object System.Net.WebClient
+        $responseStream = $webClient.OpenRead($url)
+        $fileStream = [System.IO.File]::Create($outputFile)
+        
+        $buffer = New-Object byte[] $chunkSize
+        $totalBytesRead = 0
+
+        while (($bytesRead = $responseStream.Read($buffer, 0, $buffer.Length)) -gt 0) {{
+            $fileStream.Write($buffer, 0, $bytesRead)
+            $totalBytesRead += $bytesRead
+            Write-Host "Downloaded $totalBytesRead bytes..."
+        }}
+
+        $fileStream.Close()
+        $responseStream.Close()
+        '''
+
+        logger.info("Starting chunked download from S3...")
+        result = session.run_ps(ps_script)
+
+        if result.status_code == 0:
+            logger.info("File downloaded successfully.")
+        else:
+            logger.error(f"Error during download: {result.std_err}")
+    else:
+        logger.error("Failed to generate presigned URL.")
+
 
 def run_command(command, session):
     """Runs command on image builder WorkSpace
